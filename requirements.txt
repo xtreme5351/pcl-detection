@@ -5,3 +5,10 @@ seaborn>=0.13
 nbformat>=4.2.0
 plotly
 umap-learn
+scikit-learn
+torch
+transformers
+evaluate
+accelerate
+sentencepiece
+tqdm

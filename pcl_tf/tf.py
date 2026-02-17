@@ -1,24 +1,56 @@
 from torch import nn
 from typing import Optional
+from pathlib import Path
+import os
 from transformers import AutoTokenizer
 from transformers import AutoModel, AutoConfig
+
+# default local cache directory (relative to repo); transformers will also use HF cache
+DEFAULT_CACHE_DIR = os.environ.get("MODEL_CACHE_DIR", "./models_cache")
 
 _ENCODER_CACHE = {}
 _TOKENIZER_CACHE = {}
 
 
-def get_tokenizer(model_name: str):
+def _try_local_from_cache(factory, model_name: str, cache_dir: str, **kwargs):
+    """Try to load model/tokenizer from a local cache directory using
+    `local_files_only=True`. Returns the loaded object or raises the
+    original exception if it fails.
+    """
+    try:
+        return factory(model_name, cache_dir=cache_dir, local_files_only=True, **kwargs)
+    except Exception:
+        raise
+
+
+def get_tokenizer(model_name: str, cache_dir: Optional[str] = None):
+    cd = cache_dir or DEFAULT_CACHE_DIR
     if model_name in _TOKENIZER_CACHE:
         return _TOKENIZER_CACHE[model_name]
-    tok = AutoTokenizer.from_pretrained(model_name)
+
+    # Prefer local cached files to avoid remote rate limits
+    try:
+        tok = AutoTokenizer.from_pretrained(model_name, cache_dir=cd, local_files_only=True)
+    except Exception:
+        # fallback to normal download (may be rate-limited)
+        tok = AutoTokenizer.from_pretrained(model_name, cache_dir=cd)
+
     _TOKENIZER_CACHE[model_name] = tok
     return tok
 
 
 def get_encoder(model_name: str, device: Optional[str] = None, cache_dir: Optional[str] = None):
+    cd = cache_dir or DEFAULT_CACHE_DIR
     if model_name not in _ENCODER_CACHE:
-        cfg = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-        model = AutoModel.from_pretrained(model_name, config=cfg, cache_dir=cache_dir)
+        # Try to load config & model from local cache first
+        try:
+            cfg = AutoConfig.from_pretrained(model_name, cache_dir=cd, local_files_only=True)
+            model = AutoModel.from_pretrained(model_name, config=cfg, cache_dir=cd, local_files_only=True)
+        except Exception:
+            # If local-only load fails, fall back to normal (may download)
+            cfg = AutoConfig.from_pretrained(model_name, cache_dir=cd)
+            model = AutoModel.from_pretrained(model_name, config=cfg, cache_dir=cd)
+
         _ENCODER_CACHE[model_name] = {"config": cfg, "state_dict": model.state_dict()}
 
     entry = _ENCODER_CACHE[model_name]
@@ -32,6 +64,7 @@ def get_encoder(model_name: str, device: Optional[str] = None, cache_dir: Option
 
 
 def warmup_model(model_name: str, device: Optional[str] = None, cache_dir: Optional[str] = None):
+    """Ensure model is downloaded (or present locally) and cached in-memory."""
     return get_encoder(model_name, device=device, cache_dir=cache_dir)
 
 
@@ -44,13 +77,9 @@ def clear_caches(model_name: Optional[str] = None):
         _TOKENIZER_CACHE.pop(model_name, None)
 
 
-__all__ = ["get_tokenizer", "get_encoder", "warmup_model", "clear_caches"]
-
-
 class PCLModel(nn.Module):
     def __init__(self, encoder_name, n_labels, dropout=0.1, device: str = None):
         super().__init__()
-        # Use cached encoder loader — returns a fresh model instance
         self.encoder = get_encoder(encoder_name, device=device)
         hidden = self.encoder.config.hidden_size
 
