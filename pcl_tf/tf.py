@@ -12,17 +12,6 @@ _ENCODER_CACHE = {}
 _TOKENIZER_CACHE = {}
 
 
-def _try_local_from_cache(factory, model_name: str, cache_dir: str, **kwargs):
-    """Try to load model/tokenizer from a local cache directory using
-    `local_files_only=True`. Returns the loaded object or raises the
-    original exception if it fails.
-    """
-    try:
-        return factory(model_name, cache_dir=cache_dir, local_files_only=True, **kwargs)
-    except Exception:
-        raise
-
-
 def get_tokenizer(model_name: str, cache_dir: Optional[str] = None):
     cd = cache_dir or DEFAULT_CACHE_DIR
     if model_name in _TOKENIZER_CACHE:
@@ -64,8 +53,9 @@ def get_encoder(model_name: str, device: Optional[str] = None, cache_dir: Option
 
 
 def warmup_model(model_name: str, device: Optional[str] = None, cache_dir: Optional[str] = None):
-    """Ensure model is downloaded (or present locally) and cached in-memory."""
-    return get_encoder(model_name, device=device, cache_dir=cache_dir)
+    """Ensure model (encoder and tokenizers) downloaded (or present locally) and cached in-memory."""
+    get_encoder(model_name, device=device, cache_dir=cache_dir)
+    return get_tokenizer(model_name, cache_dir=cache_dir)
 
 
 def clear_caches(model_name: Optional[str] = None):

@@ -1,12 +1,14 @@
 import torch
 import numpy as np
 
-MAX_LEN = 128
+DEFAULT_MAX_LEN = 128
 
 
-def collate_fn(tokenizer, batch):
+def collate_fn(tokenizer, batch, max_len=None):
     if len(batch) == 0:
         return {}
+
+    max_len = max_len or DEFAULT_MAX_LEN
 
     first = batch[0]
     # Support multiple batch element types: dicts (preferred) or raw strings
@@ -24,7 +26,7 @@ def collate_fn(tokenizer, batch):
         except Exception:
             raise TypeError("Unsupported batch element type for collate_fn")
 
-    enc = tokenizer(texts, truncation=True, padding=True, max_length=MAX_LEN, return_tensors="pt")
+    enc = tokenizer(texts, truncation=True, padding=True, max_length=max_len, return_tensors="pt")
 
     if have_labels:
         labels_bin = torch.tensor([b["bin"] for b in batch], dtype=torch.float32).unsqueeze(1)
