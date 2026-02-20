@@ -4,11 +4,18 @@ from torch.utils.data import Dataset
 
 
 class DatasetManager(Dataset):
-    def __init__(self, path, texts_df):
+    def __init__(self, path, texts_df, aux_features: "np.ndarray | None" = None):
         self.path = path
         self.texts_df = texts_df
+        self.aux_features = aux_features
 
         labels_df, label_array = self._load_csv(path)
+
+        # drop par_ids not present in texts_df
+        valid_mask = np.isin(labels_df.index.values, texts_df.index.values)
+        labels_df = labels_df[valid_mask]
+        label_array = label_array[valid_mask]
+
         merged = self._join_texts(labels_df)
 
         # pick texts, drop empty
@@ -21,6 +28,9 @@ class DatasetManager(Dataset):
         self.texts = texts
         self.bin = (label_array.sum(axis=1) > 0).astype(int).tolist()
         self.mult = label_array.astype(np.float32)
+
+        # need to align features with filtered texts
+        self.aux_features = self.aux_features[keep_mask] if self.aux_features is not None else None
 
     def _load_csv(self, path):
         df = pd.read_csv(path)
@@ -74,7 +84,14 @@ class DatasetManager(Dataset):
         return len(self.texts)
 
     def __getitem__(self, idx):
-        return {"text": self.texts[idx], "bin": self.bin[idx], "multi": self.mult[idx]}
+        item = {
+            "text": self.texts[idx],
+            "bin": self.bin[idx],
+            "multi": self.mult[idx]
+        }
+        if self.aux_features is not None:
+            item["aux_features"] = self.aux_features[idx]
+        return item
 
     def get_texts(self):
         return self.texts

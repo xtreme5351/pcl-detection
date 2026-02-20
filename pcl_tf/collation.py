@@ -33,4 +33,10 @@ def collate_fn(tokenizer, batch, max_len=None):
         labels_multi = torch.tensor(np.asarray([b["multi"] for b in batch]), dtype=torch.float32)
         enc["labels"] = torch.cat([labels_bin, labels_multi], dim=1)
 
+    # pass through auxiliary features if present
+    if isinstance(first, dict) and "aux_features" in first:
+        enc["aux_features"] = torch.tensor(
+            np.stack([b["aux_features"] for b in batch]), dtype=torch.float32
+        )
+
     return enc
